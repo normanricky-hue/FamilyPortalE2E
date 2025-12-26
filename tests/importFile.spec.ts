@@ -55,7 +55,8 @@ test.describe("@smoke @importFile", () => {
     await pendingPage.clickTabsFromSummary(
       summaryByCategory,
       summary.fileId!,
-      summary.categories
+      summary.categories,
+      eligibilitySummary
     );
   });
 });

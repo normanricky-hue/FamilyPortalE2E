@@ -6,7 +6,8 @@
     "test": "playwright test",
     "test:login": "playwright test --grep @login",
     "test:smoke": "playwright test --grep @smoke",
-    "test:smoke-seq": "npm run test:login && npm run test:smoke"
+    "test:smoke-seq": "npm run test:login && npm run test:smoke",
+    "e2e:all": "node run-all.js"
   },
   "keywords": [],
   "author": "",

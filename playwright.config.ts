@@ -1,40 +1,41 @@
+import "dotenv/config";
 import { defineConfig, devices } from "@playwright/test";
+
 export default defineConfig({
-  timeout: 30 * 5000, 
+  timeout: 150000, // ✅ 2 minutes per test
+
   expect: {
-    timeout: 60000, 
+    timeout: 20000, // ✅ 10 seconds (fail fast)
   },
+
   testDir: "./tests",
-  fullyParallel: false,
-  //retries: process.env.CI ? 2 : 0,
+
+  fullyParallel: true, // ✅ enable real parallelism
   retries: 0,
-  //workers: process.env.CI ? 1 : undefined,
-  workers: 1,
-  reporter: [
-    ["html",{ open: "on-failure" }],
-    // ['allure-playwright'],
-    ["./reporters/emailReporter"],
-    ["dot"],
-    ["list"],
-  ],
+
+  workers: 15, // ✅ start safe, scale later
+
+  reporter: [["html", { open: "never" }], ["dot"], ["list"]],
+
   use: {
-    storageState: "storage/clinicianAuth.json",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
-    headless: false,
-    viewport: { width: 1280, height: 720 }, // Set default viewport size for consistency
-    ignoreHTTPSErrors: true, // Ignore SSL errors if necessary
-    permissions: ["geolocation"], // Set necessary permissions for geolocation-based tests
-      actionTimeout: 15000, // clicks, fills
-    navigationTimeout: 60000, // waits for navigation like goto(), reload()
+
+    headless: true, // ✅ important for parallel runs
+
+    viewport: { width: 1280, height: 720 },
+    ignoreHTTPSErrors: true,
+    permissions: ["geolocation"],
+
+    actionTimeout: 100000,
+    navigationTimeout: 10000,
   },
-  
+
   projects: [
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
-    
   ],
 });

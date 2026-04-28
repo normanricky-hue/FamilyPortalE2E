@@ -1,0 +1,55 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>E2E Workflow Metrics Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; background: #f9f9f9; color: #222; }
+    h1 { color: #2c3e50; }
+    h2 { color: #1a73e8; }
+    table { border-collapse: collapse; width: 70%; margin-bottom: 2em; background: #fff; }
+    th, td { border: 1px solid #ccc; padding: 10px 16px; text-align: left; }
+    th { background: #e3eafc; }
+    ul { margin-bottom: 2em; }
+    .explanation { background: #eaf6fb; border-left: 4px solid #1a73e8; padding: 1em; margin-bottom: 2em; }
+  </style>
+</head>
+<body>
+  <h1>E2E Workflow Metrics Report</h1>
+  <div class="explanation">
+    <strong>About this report:</strong><br>
+    This report summarizes the results of the automated end-to-end (E2E) workflow for the Family Portal application. Below are the workflow steps performed, followed by a summary of test metrics and explanations to help you interpret the results.
+  </div>
+  <h2>Workflow Steps</h2>
+  <ul>
+    <li>Log in to the Family Portal application.</li><li>Go to the renewables page and do the actions.</li><li>Go to the Review Pay Period page.</li><li>Create planned visits for two employees.</li><li>Perform the following actions on the visit plan:</li><li>&nbsp;&nbsp;- Send for Correction</li><li>&nbsp;&nbsp;- Approve Visit Plan</li><li>Navigate to Employer Pay Stub (redirects to PASS page).</li><li>Navigate to the Authorizations page.</li><li>Navigate to the Reimbursement page.</li><li>Navigate to the Denied Timesheet page.</li><li>Navigate to the Vendor Timesheet page.</li><li>Log out of the application.</li>
+  </ul>
+  <h2>Test Summary</h2>
+  <table>
+    <tr><th>Metric</th><th>Value</th></tr>
+    <tr><td>Total Users</td><td>15</td></tr>
+    <tr><td>Average Duration</td><td>95.38 s</td></tr>
+    <tr><td>Median Duration</td><td>101.55 s</td></tr>
+    <tr><td>90th Percentile (p90)</td><td>117.62 s</td></tr>
+    <tr><td>95th Percentile (p95)</td><td>118.14 s</td></tr>
+    <tr><td>99th Percentile (p99)</td><td>118.14 s</td></tr>
+    <tr><td>Error Rate</td><td>26.67 %</td></tr>
+    <tr><td>Timeout Count</td><td>4</td></tr>
+    <tr><td>Workflows per Minute</td><td>0.63</td></tr>
+  </table>
+  <div class="explanation">
+    <strong>How to read these metrics:</strong><br>
+    <ul>
+      <li><b>Total Users:</b> Number of user workflows tested.</li>
+      <li><b>Average/Median Duration:</b> Typical time taken for a workflow to complete.</li>
+      <li><b>Percentiles (p90, p95, p99):</b> 90%, 95%, and 99% of workflows finished within this time.</li>
+      <li><b>Error Rate:</b> Percentage of workflows that failed.</li>
+      <li><b>Timeout Count:</b> Number of workflows that timed out.</li>
+      <li><b>Workflows per Minute:</b> Throughput of the system (higher is better).</li>
+    </ul>
+    <p><b>Results interpretation:</b><br>
+    A low error rate and timeout count indicate stable workflows. Lower average and percentile durations mean faster performance. If any metric is unusually high or low, further investigation may be needed.</p>
+  </div>
+</body>
+</html>

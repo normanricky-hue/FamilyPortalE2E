@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { Page } from "@playwright/test";
 import { ENV_CONFIG } from "../config/env.config";
 
 export class LoginPage {
@@ -7,21 +7,25 @@ export class LoginPage {
     this.page = page;
   }
 
-  // async goto() {
-  //   await this.page.goto('https://working.kantimehealth.net/identity/v2/Accounts/Authorize');
-  // }
   async goto() {
-  await this.page.goto(
-    `${ENV_CONFIG.baseUrl}${ENV_CONFIG.urls.login}`
-  );
-}
+    await this.page.goto(`${ENV_CONFIG.baseUrl}${ENV_CONFIG.urls.login}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+
+    // // ensure login form is ready
+    // await this.page.locator("input").first().waitFor({ state: "visible" });
+  }
 
   private async fillFirstMatchingSelector(selectors: string[], value: string) {
     for (const sel of selectors) {
       const locator = this.page.locator(sel);
       try {
-        if (await locator.count() > 0) {
-          const visible = await locator.first().isVisible().catch(() => false);
+        if ((await locator.count()) > 0) {
+          const visible = await locator
+            .first()
+            .isVisible()
+            .catch(() => false);
           if (visible) {
             await locator.first().fill(value);
             return true;
@@ -33,7 +37,7 @@ export class LoginPage {
     }
     // fallback: try to type into the first input on the page
     try {
-      const first = this.page.locator('input').first();
+      const first = this.page.locator("input").first();
       if (await first.count()) {
         await first.fill(value);
         return true;
@@ -49,8 +53,8 @@ export class LoginPage {
       'input[name="UserName"]',
       'input[name="username"]',
       'input[type="email"]',
-      'input[id*=user]',
-      'input[placeholder*=Email]',
+      "input[id*=user]",
+      "input[placeholder*=Email]",
     ];
     await this.fillFirstMatchingSelector(usernameSelectors, username);
   }
@@ -60,8 +64,8 @@ export class LoginPage {
       'input[name="Password"]',
       'input[name="password"]',
       'input[type="password"]',
-      'input[id*=pass]',
-      'input[placeholder*=Password]',
+      "input[id*=pass]",
+      "input[placeholder*=Password]",
     ];
     await this.fillFirstMatchingSelector(passwordSelectors, password);
   }
@@ -74,7 +78,7 @@ export class LoginPage {
   async clickLogin() {
     const selectors = [
       'button[type="submit"]',
-      'button[id*=login]',
+      "button[id*=login]",
       'button:has-text("Log in")',
       'button:has-text("Login")',
       'button:has-text("Sign in")',
@@ -84,7 +88,7 @@ export class LoginPage {
     for (const sel of selectors) {
       const locator = this.page.locator(sel);
       try {
-        if (await locator.count() > 0) {
+        if ((await locator.count()) > 0) {
           const first = locator.first();
           if (await first.isVisible().catch(() => false)) {
             await first.click();

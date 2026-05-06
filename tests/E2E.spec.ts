@@ -13,11 +13,65 @@ import { EmployerPayStubPage } from "../pages/employerPayStub.page";
 import users from "../data/users.json";
 
 const resultsFile = path.join(__dirname, "../results/test_results.json");
+const lockFile = path.join(__dirname, "../results/test_results.lock");
 
 // Initialize results file
 test.beforeAll(async () => {
+  const resultsDir = path.dirname(resultsFile);
+  if (!fs.existsSync(resultsDir)) {
+    fs.mkdirSync(resultsDir, { recursive: true });
+  }
   fs.writeFileSync(resultsFile, "[]");
 });
+
+// Helper function to safely write results with file locking
+function writeResultSafely(result: any) {
+  const maxRetries = 50;
+  const retryDelay = 100; // ms
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      // Try to create lock file (atomic operation)
+      fs.writeFileSync(lockFile, process.pid.toString(), { flag: 'wx' });
+      
+      try {
+        // Read current results
+        let results = [];
+        try {
+          const content = fs.readFileSync(resultsFile, "utf-8");
+          results = JSON.parse(content);
+        } catch {}
+        
+        // Add new result
+        results.push(result);
+        
+        // Write back
+        fs.writeFileSync(resultsFile, JSON.stringify(results, null, 2));
+        
+        return; // Success!
+      } finally {
+        // Always release lock
+        try {
+          fs.unlinkSync(lockFile);
+        } catch {}
+      }
+    } catch (err: any) {
+      // Lock file exists, wait and retry
+      if (err.code === 'EEXIST') {
+        // Wait before retry
+        const waitTime = retryDelay + Math.random() * 50; // Add random jitter
+        const endTime = Date.now() + waitTime;
+        while (Date.now() < endTime) {
+          // Busy wait
+        }
+        continue;
+      }
+      throw err;
+    }
+  }
+  
+  console.error(`Failed to write result after ${maxRetries} attempts`);
+}
 
 test.describe.parallel("Family portal E2E UI Automation", () => {
   for (const user of users) {
@@ -159,19 +213,12 @@ test.describe.parallel("Family portal E2E UI Automation", () => {
       } finally {
         const duration = Date.now() - start;
 
-        let results = [];
-        try {
-          results = JSON.parse(fs.readFileSync(resultsFile, "utf-8"));
-        } catch {}
-
-        results.push({
+        writeResultSafely({
           username: user.username,
           status,
           duration,
           errorMsg,
         });
-
-        fs.writeFileSync(resultsFile, JSON.stringify(results, null, 2));
       }
     });
   }

@@ -12,3 +12,5 @@ storage/
 *.zip
 .DS_Store
 
+# Generated reports
+results/

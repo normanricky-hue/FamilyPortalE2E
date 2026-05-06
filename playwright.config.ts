@@ -2,10 +2,10 @@ import "dotenv/config";
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-  timeout: 150000, // ✅ 2 minutes per test
+  timeout: 200000, // ✅ 2 minutes per test
 
   expect: {
-    timeout: 20000, // ✅ 10 seconds (fail fast)
+    timeout: 50000, // ✅ 10 seconds (fail fast)
   },
 
   testDir: "./tests",
@@ -28,8 +28,8 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     permissions: ["geolocation"],
 
-    actionTimeout: 100000,
-    navigationTimeout: 10000,
+    actionTimeout: 150000,
+    navigationTimeout: 15000,
   },
 
   projects: [

@@ -10,7 +10,7 @@ export class VendorTimesheetPage {
 
   async open() {
     await this.page.locator('#div_VendorTimesheets').click();
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   async verifyLoaded() {

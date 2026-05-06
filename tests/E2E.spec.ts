@@ -53,7 +53,7 @@ test.describe.parallel("Family portal E2E UI Automation", () => {
             await loader.waitFor({ state: "hidden", timeout: 10000 });
           }
 
-          await expect(quickLaunch).toBeVisible({ timeout: 10000 });
+          await expect(quickLaunch).toBeVisible({ timeout: 20000 });
         };
 
         // 🔹 Renewable

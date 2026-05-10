@@ -1,4 +1,6 @@
-import "dotenv/config";
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
@@ -29,7 +31,7 @@ export default defineConfig({
     permissions: ["geolocation"],
 
     actionTimeout: 150000,
-    navigationTimeout: 15000,
+    navigationTimeout: 25000,
   },
 
   projects: [

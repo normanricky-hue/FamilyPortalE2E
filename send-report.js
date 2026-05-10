@@ -1,5 +1,6 @@
 // send-report.js
 // Usage: node send-report.js
+require('dotenv').config();
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
@@ -58,13 +59,22 @@ const emailBody = `
 </html>
 `;
 
+const emailUser = process.env.EMAIL_USER;
+const emailPass = process.env.EMAIL_PASS;
+
+if (!emailUser || !emailPass) {
+  console.error('EMAIL_USER or EMAIL_PASS is not set. Check your .env file or GitHub Actions secrets.');
+  process.exitCode = 2;
+  process.exit(2);
+}
+
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
   auth: {
-    user: 'norman.ricky@grasko.com',
-    pass: ''
+    user: emailUser,
+    pass: emailPass
   }
 });
 
@@ -90,8 +100,8 @@ if (fs.existsSync(pdfPath)) {
 }
 
 const mailOptions = {
-  from: 'norman.ricky@grasko.com',
-  to: 'rsimmons@kanrad.com',
+  from: emailUser,
+  to: process.env.EMAIL_TO || emailUser,
   subject: 'E2E Workflow Metrics Report - Family Portal',
   html: emailBody,
   attachments: attachments

@@ -9,8 +9,9 @@ import { DeniedTimesheetPage } from "../pages/deniedTimesheet.page";
 import { VendorTimesheetPage } from "../pages/vendorTimesheet.page";
 import { ReviewPayPeriodPage } from "../pages/reviewPayPeriod.page";
 import { EmployerPayStubPage } from "../pages/employerPayStub.page";
+import { getUsers } from "../utils/userLoader";
 
-import users from "../data/users.json";
+const users = getUsers();
 
 const resultsFile = path.join(__dirname, "../results/test_results.json");
 const lockFile = path.join(__dirname, "../results/test_results.lock");

@@ -12,6 +12,7 @@ jobs:
       BASE_URL: ${{ secrets.BASE_URL }}
       EMAIL_USER: ${{ secrets.EMAIL_USER }}
       EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+      EMAIL_TO: ${{ secrets.EMAIL_TO }}
 
     steps:
       - name: Checkout repository
@@ -23,6 +24,22 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Validate required secrets
+        run: |
+          MISSING=""
+          [ -z "$BASE_URL" ]    && MISSING="$MISSING BASE_URL"
+          [ -z "$EMAIL_USER" ]  && MISSING="$MISSING EMAIL_USER"
+          [ -z "$EMAIL_PASS" ]  && MISSING="$MISSING EMAIL_PASS"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required secrets:$MISSING"
+            exit 1
+          fi
+          if [ -z "${{ secrets.USERS_JSON }}" ]; then
+            echo "::error::Missing required secret: USERS_JSON"
+            exit 1
+          fi
+          echo "All required secrets are present."
+
       - name: Install dependencies
         run: npm ci
 
@@ -33,6 +50,8 @@ jobs:
         run: |
           mkdir -p data
           echo '${{ secrets.USERS_JSON }}' > data/users.json
+          USER_COUNT=$(node -e "const u = require('./data/users.json'); console.log(u.length);")
+          echo "Loaded $USER_COUNT user(s) into data/users.json"
 
       - name: Run full E2E pipeline
         run: node run-all.js
@@ -41,24 +60,62 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ github.run_id }}
           path: playwright-report/
+          if-no-files-found: ignore
           retention-days: 14
 
-      - name: Upload blob report (if exists)
+      - name: Upload blob report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: blob-report
+          name: blob-report-${{ github.run_id }}
           path: blob-report/
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Upload metrics report
+      - name: Upload metrics HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: metrics-report
-          path: results/
+          name: metrics-html-${{ github.run_id }}
+          path: results/report.html
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Upload metrics PDF report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-pdf-${{ github.run_id }}
+          path: results/report.pdf
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload raw test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-json-${{ github.run_id }}
+          path: results/test_results.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Print run summary
+        if: always()
+        run: |
+          echo "## E2E Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f results/test_results.json ]; then
+            TOTAL=$(node -e "const r=require('./results/test_results.json'); console.log(r.length);")
+            PASSED=$(node -e "const r=require('./results/test_results.json'); console.log(r.filter(x=>x.status==='Pass').length);")
+            FAILED=$(node -e "const r=require('./results/test_results.json'); console.log(r.filter(x=>x.status==='Fail').length);")
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Users | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "test_results.json not found — tests may not have run." >> $GITHUB_STEP_SUMMARY
+          fi

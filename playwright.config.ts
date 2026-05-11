@@ -21,7 +21,11 @@ export default defineConfig({
 
   workers: process.env.CI ? 5 : 20,
 
-  reporter: [["html", { open: "never" }], ["dot"], ["list"]],
+  // CI: blob only (blob-report/ → merged later by merge-reports step)
+  // Local: HTML report for immediate viewing + blob for future sharding readiness
+  reporter: process.env.CI
+    ? [['blob']]
+    : [['html', { open: 'never' }], ['blob'], ['dot'], ['list']],
 
   use: {
     trace: "on-first-retry",

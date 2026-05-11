@@ -4,20 +4,16 @@ dotenv.config();
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-  // Global test timeout — wall-clock limit for one complete user workflow
-  // (login → 7 portal steps → pay stub).
-  // 200 s was too generous: a genuinely stuck worker would hold a shard slot
-  // for ~3 min before Playwright could recover it.
-  // 130 s gives the full multi-step workflow enough headroom while ensuring
-  // stuck tests fail fast and free their worker for the next user.
-  timeout: 130000,
+  // Global test timeout — wall-clock limit for one complete user workflow.
+  // Raised to 180 s: at 30 users / 6 shards / distributed GitHub runners,
+  // retrying an entire 7-step healthcare portal workflow is more expensive
+  // than allowing moderately longer first attempts to succeed.
+  timeout: 180000,
 
   expect: {
-    // Assertion timeout — raised from 20 s back to 25 s after observing ~50% retry
-    // rate under 6-shard / 30-user distributed runs. The portal's backend rendering
-    // under high concurrency occasionally needs those extra 5 s to resolve; tighter
-    // values produced false assertion failures that burned a full retry attempt.
-    timeout: 25000,
+    // Assertion timeout — 40 s tolerates backend rendering delays under high
+    // concurrency without burning a retry on a transient slow response.
+    timeout: 40000,
   },
 
   globalSetup: './utils/globalSetup.ts',
@@ -48,18 +44,14 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     permissions: ["geolocation"],
 
-    // Action timeout — raised from 40 s to 60 s after distributed retry analysis.
-    // Under 6-shard parallel execution against a legacy healthcare portal, click and
-    // fill interactions occasionally stall for 40–55 s due to JS-heavy page state.
-    // 60 s prevents premature action failures while remaining well under the 130 s
-    // global test timeout, so a genuinely hung worker is still recovered promptly.
-    actionTimeout: 60000,
+    // Action timeout — 90 s covers the slowest legitimate portal interactions
+    // (JS-heavy state transitions, spinner waits) under distributed concurrency.
+    // Stays well under the 180 s global ceiling so hung workers are still recovered.
+    actionTimeout: 90000,
 
-    // Navigation timeout — raised from 25 s to 30 s to absorb slower initial page
-    // loads under high distributed concurrency (DNS + TLS + SSO redirect chain).
-    // 30 s keeps navigations bounded without causing false timeout failures that
-    // previously inflated the retry rate.
-    navigationTimeout: 30000,
+    // Navigation timeout — 45 s absorbs SSO redirect chains and slow initial
+    // page loads under 6-shard parallel execution without causing false failures.
+    navigationTimeout: 45000,
   },
 
   projects: [

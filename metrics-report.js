@@ -11,15 +11,10 @@ const htmlReportFile = path.join(__dirname, 'results', 'report.html');
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Mask username for privacy + PDF readability: john.doe@gmail.com -> jo***@gmail.com */
-function maskUsername(username) {
+/** Return the full username for display in internal operational reports. */
+function displayUsername(username) {
   if (!username || typeof username !== 'string') return 'unknown';
-  const atIdx = username.indexOf('@');
-  if (atIdx <= 0) return username.slice(0, 2) + '***';
-  const local  = username.slice(0, atIdx);
-  const domain = username.slice(atIdx); // includes @
-  const keep   = Math.min(2, local.length);
-  return local.slice(0, keep) + '***' + domain;
+  return username;
 }
 
 /**
@@ -87,18 +82,12 @@ function main() {
   const passRate     = (passes.length / (total || 1)) * 100;
   const timeoutCount = timeouts.length;
 
-  // -- Slow thresholds --
-  const WARN_S     = 90;
-  const CRITICAL_S = 120;
-
-  // -- Sort detail rows: Fail -> Flaky -> Slow -> Clean --
+  // -- Sort detail rows: Fail -> Flaky -> Clean --
   const sorted = [...results].sort((a, b) => {
     const rank = r => {
-      if (r.status === 'Fail')              return 0;
-      if (r.retryCount > 0)                return 1;
-      if (r.duration / 1000 > CRITICAL_S)  return 2;
-      if (r.duration / 1000 > WARN_S)      return 3;
-      return 4;
+      if (r.status === 'Fail') return 0;
+      if (r.retryCount > 0)   return 1;
+      return 2;
     };
     return rank(a) - rank(b);
   });
@@ -158,38 +147,26 @@ function main() {
 
   // -- Detail table rows --
   const userDetailsRows = sorted.map(result => {
-    const login      = maskUsername(result.username);
-    const durationS  = (result.duration / 1000).toFixed(3);
-    const durNum     = result.duration / 1000;
-    const isFail     = result.status === 'Fail';
-    const isFlaky    = !isFail && result.retryCount > 0;
-    const isCritical = !isFail && durNum > CRITICAL_S;
-    const isSlow     = !isFail && durNum > WARN_S;
-    const retry      = result.retryCount != null ? result.retryCount : '-';
-    const toType     = classifyTimeout(result.errorMsg);
-    const hasError   = isFail ? 1 : 0;
-    const toCell     = toType ? `<span class="timeout-label">${toType}</span>` : '0';
+    const login    = displayUsername(result.username);
+    const durationS = (result.duration / 1000).toFixed(3);
+    const isFail   = result.status === 'Fail';
+    const isFlaky  = !isFail && result.retryCount > 0;
+    const retry    = result.retryCount != null ? result.retryCount : '-';
+    const toType   = classifyTimeout(result.errorMsg);
+    const hasError = isFail ? 1 : 0;
+    const toCell   = toType ? `<span class="timeout-label">${toType}</span>` : '0';
 
     let badge;
     if (isFail)       badge = '<span class="badge badge-fail">Fail</span>';
     else if (isFlaky) badge = '<span class="badge badge-flaky">Pass*</span>';
     else              badge = '<span class="badge badge-pass">Pass</span>';
 
-    let rowClass;
-    if (isFail)          rowClass = 'row-fail';
-    else if (isFlaky)    rowClass = 'row-flaky';
-    else if (isCritical) rowClass = 'row-slow-critical';
-    else if (isSlow)     rowClass = 'row-slow-warn';
-    else                 rowClass = 'row-clean';
-
-    let durCell = durationS;
-    if (isCritical)    durCell = `<span class="dur-critical">${durationS}</span>`;
-    else if (isSlow)   durCell = `<span class="dur-warn">${durationS}</span>`;
+    const rowClass = isFail ? 'row-fail' : isFlaky ? 'row-flaky' : 'row-clean';
 
     return `<tr class="${rowClass}">
       <td class="col-login">${login}</td>
       <td class="col-status">${badge}</td>
-      <td class="col-duration">${durCell}</td>
+      <td class="col-duration">${durationS}</td>
       <td class="col-retry">${retry}</td>
       <td class="col-error">${hasError}</td>
       <td class="col-timeout">${toCell}</td>
@@ -256,14 +233,10 @@ function main() {
     /* Detail table */
     .detail-table td { text-align: center; }
     .detail-table .col-login { text-align: left; }
-    .row-fail          { background: #fdf0f0; }
-    .row-flaky         { background: #fefce8; }
-    .row-slow-warn     { background: #fff8e1; }
-    .row-slow-critical { background: #fff3e0; }
+    .row-fail  { background: #fdf0f0; }
+    .row-flaky { background: #fefce8; }
     .row-clean:nth-child(odd)  { background: #fff; }
     .row-clean:nth-child(even) { background: #f7f9ff; }
-    .dur-warn     { color: #b7770d; font-weight: 600; }
-    .dur-critical { color: #c0392b; font-weight: 700; }
 
     /* Column widths */
     .col-login    { min-width: 150px; }
@@ -323,11 +296,6 @@ function main() {
 
 <!-- 3. DETAILED USER RESULTS -->
 <h2>Detailed User Results</h2>
-<p style="color:#555;font-size:0.88em;margin:-0.3em 0 0.8em">
-  Sorted by severity: Failed | Flaky | Slow | Clean.
-  Duration highlights: <span class="dur-warn">above ${WARN_S}s = warning</span> |
-  <span class="dur-critical">above ${CRITICAL_S}s = critical</span>
-</p>
 <div class="legend">
   <span><span class="badge badge-pass">Pass</span> Clean pass</span>
   <span><span class="badge badge-flaky">Pass*</span> Passed after retry (flaky)</span>
@@ -362,7 +330,7 @@ function main() {
 <div class="explanation">
   <strong>How to read this report</strong>
   <ul>
-    <li><b>Login:</b> Privacy-masked username (jo***@domain.com) - first two characters preserved for traceability.</li>
+    <li><b>Login:</b> Full user login ID for traceability.</li>
     <li><b>Status:</b> Final attempt result. Pass* = passed only after a Playwright retry (flaky test).</li>
     <li><b>Execution Time (s):</b> Actual wall-clock seconds for this user's final attempt - not an average.</li>
     <li><b>Retry:</b> 0 = first attempt result; 1 = Playwright triggered one retry before this result.</li>

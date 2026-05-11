@@ -29,8 +29,8 @@ jobs:
           # Clamp to valid range 1-10
           if [ "$SHARD_COUNT" -lt 1 ]; then SHARD_COUNT=1; fi
           if [ "$SHARD_COUNT" -gt 10 ]; then SHARD_COUNT=10; fi
-          # Build JSON array [1, 2, ..., N]
-          INDICES=$(seq 1 $SHARD_COUNT | jq -s '.')
+          # Build JSON array [1, 2, ..., N] — compact single line required by GITHUB_OUTPUT
+          INDICES=$(seq 1 $SHARD_COUNT | jq -sc '.')
           echo "matrix={\"shardIndex\":${INDICES},\"shardTotal\":[${SHARD_COUNT}]}" >> $GITHUB_OUTPUT
           echo "shardTotal=${SHARD_COUNT}" >> $GITHUB_OUTPUT
           echo "Generated matrix for ${SHARD_COUNT} shard(s): ${INDICES}"

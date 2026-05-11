@@ -4,18 +4,22 @@ dotenv.config();
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-  timeout: 200000, // ✅ 2 minutes per test
+  timeout: 200000, // 2 minutes per test
 
   expect: {
-    timeout: 50000, // ✅ 10 seconds (fail fast)
+    timeout: 50000,
   },
+
+  globalSetup: './utils/globalSetup.ts',
 
   testDir: "./tests",
 
-  fullyParallel: true, // ✅ enable real parallelism
-  retries: 0,
+  fullyParallel: true,
+  // CI (GitHub Actions): lower workers to respect 2-vCPU runner limits
+  // Local: higher concurrency for faster execution
+  retries: process.env.CI ? 1 : 0,
 
-  workers: 15, // ✅ start safe, scale later
+  workers: process.env.CI ? 5 : 20,
 
   reporter: [["html", { open: "never" }], ["dot"], ["list"]],
 

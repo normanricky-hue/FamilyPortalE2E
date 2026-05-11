@@ -2,11 +2,29 @@ name: Playwright E2E Tests
 
 on:
   workflow_dispatch:
+    inputs:
+      shard_count:
+        description: 'Number of shards (runners) to use'
+        required: false
+        default: '3'
 
 jobs:
-  e2e:
-    name: Run E2E Tests
+  # ─────────────────────────────────────────────────────────────────────────────
+  # SHARD JOBS — distributed test execution across N GitHub runners
+  # Each shard runs a slice of the full user test suite independently.
+  # Shard jobs ONLY execute tests and upload raw artifacts.
+  # They do NOT generate reports, PDFs, ZIPs, or send email.
+  # ─────────────────────────────────────────────────────────────────────────────
+  shard:
+    name: Shard ${{ matrix.shardIndex }} / 3
     runs-on: ubuntu-latest
+    continue-on-error: true  # one shard failure must not block the merge job
+
+    strategy:
+      fail-fast: false        # all shards must upload artifacts even if one fails
+      matrix:
+        shardIndex: [1, 2, 3]
+        shardTotal: [3]
 
     env:
       BASE_URL: ${{ secrets.BASE_URL }}
@@ -27,9 +45,9 @@ jobs:
       - name: Validate required secrets
         run: |
           MISSING=""
-          [ -z "$BASE_URL" ]    && MISSING="$MISSING BASE_URL"
-          [ -z "$EMAIL_USER" ]  && MISSING="$MISSING EMAIL_USER"
-          [ -z "$EMAIL_PASS" ]  && MISSING="$MISSING EMAIL_PASS"
+          [ -z "$BASE_URL" ]   && MISSING="$MISSING BASE_URL"
+          [ -z "$EMAIL_USER" ] && MISSING="$MISSING EMAIL_USER"
+          [ -z "$EMAIL_PASS" ] && MISSING="$MISSING EMAIL_PASS"
           if [ -n "$MISSING" ]; then
             echo "::error::Missing required secrets:$MISSING"
             exit 1
@@ -53,58 +71,183 @@ jobs:
           USER_COUNT=$(node -e "const u = require('./data/users.json'); console.log(u.length);")
           echo "Loaded $USER_COUNT user(s) into data/users.json"
 
-      - name: Run full E2E pipeline
-        run: node run-all.js
+      - name: Run Playwright tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+        run: |
+          npx playwright test tests/E2E.spec.ts \
+            --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
-      - name: Upload Playwright HTML report
+      - name: Rename partial result files to include shard index
+        if: always()
+        run: |
+          # Prevents filename collisions when the merge job combines partials
+          # from all shards into a single results/partials/ directory.
+          SHARD=${{ matrix.shardIndex }}
+          if [ -d results/partials ]; then
+            for f in results/partials/*.json; do
+              [ -e "$f" ] || continue
+              base=$(basename "$f" .json)
+              mv "$f" "results/partials/${base}-shard-${SHARD}.json"
+            done
+            echo "Renamed partial files for shard ${SHARD}:"
+            ls results/partials/
+          else
+            echo "No partials directory found for shard ${SHARD} — tests may have all failed."
+          fi
+
+      - name: Upload blob report (shard ${{ matrix.shardIndex }})
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ github.run_id }}
+          name: blob-report-shard-${{ matrix.shardIndex }}
+          path: blob-report/
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Upload metrics partials (shard ${{ matrix.shardIndex }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-partials-shard-${{ matrix.shardIndex }}
+          path: results/partials/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # MERGE JOB — centralized aggregation and final reporting
+  # Runs after ALL shard jobs complete (pass or fail).
+  # Downloads all shard artifacts, merges everything, and sends ONE email.
+  # ─────────────────────────────────────────────────────────────────────────────
+  merge:
+    name: Merge Reports & Send Email
+    runs-on: ubuntu-latest
+    needs: [shard]
+    if: always()  # run even if one or more shards failed
+
+    env:
+      BASE_URL: ${{ secrets.BASE_URL }}
+      EMAIL_USER: ${{ secrets.EMAIL_USER }}
+      EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+      EMAIL_TO: ${{ secrets.EMAIL_TO }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers (required for merge-reports and PDF generation)
+        run: npx playwright install --with-deps chromium
+
+      - name: Create data/users.json from secret
+        run: |
+          mkdir -p data
+          echo '${{ secrets.USERS_JSON }}' > data/users.json
+
+      # ── Download all shard blob reports ───────────────────────────────────────
+      - name: Download all blob report artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: blob-report-shard-*
+          path: all-blob-reports/
+          merge-multiple: true   # all shard blobs merged into one flat directory
+
+      # ── Download all shard metrics partials ───────────────────────────────────
+      - name: Download all metrics partial artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: metrics-partials-shard-*
+          path: results/partials/
+          merge-multiple: true   # all shard partials merged; unique names prevent collisions
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Blob reports collected ==="
+          ls all-blob-reports/ 2>/dev/null || echo "(none)"
+          echo "=== Metrics partials collected ==="
+          ls results/partials/ 2>/dev/null || echo "(none)"
+
+      # ── Merge Playwright blob reports → playwright-report/ ────────────────────
+      - name: Merge Playwright blob reports
+        run: |
+          if [ -d all-blob-reports ] && [ "$(ls -A all-blob-reports 2>/dev/null)" ]; then
+            npx playwright merge-reports --reporter html ./all-blob-reports
+            echo "Playwright report merged successfully."
+          else
+            echo "::warning::No blob reports found to merge — skipping merge-reports."
+            mkdir -p playwright-report
+          fi
+
+      # ── Merge metrics partials → results/test_results.json ────────────────────
+      - name: Merge metrics partials
+        run: node merge-metrics.js
+
+      # ── Generate final HTML + PDF + ZIP + Email ────────────────────────────────
+      - name: Generate metrics HTML report
+        run: node metrics-report.js
+
+      - name: Generate metrics PDF report
+        run: node generate-pdf.js
+
+      - name: Generate ZIP archive
+        run: node zip-report.js
+
+      - name: Send report email
+        run: node send-report.js
+
+      # ── Upload final consolidated artifacts ───────────────────────────────────
+      - name: Upload final Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-final-${{ github.run_id }}
           path: playwright-report/
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Upload blob report
+      - name: Upload final metrics HTML
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: blob-report-${{ github.run_id }}
-          path: blob-report/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload metrics HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: metrics-html-${{ github.run_id }}
+          name: metrics-html-final-${{ github.run_id }}
           path: results/report.html
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Upload metrics PDF report
+      - name: Upload final metrics PDF
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: metrics-pdf-${{ github.run_id }}
+          name: metrics-pdf-final-${{ github.run_id }}
           path: results/report.pdf
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Upload raw test results
+      - name: Upload final test results JSON
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-json-${{ github.run_id }}
+          name: test-results-json-final-${{ github.run_id }}
           path: results/test_results.json
           if-no-files-found: ignore
           retention-days: 14
 
+      # ── GitHub Step Summary ───────────────────────────────────────────────────
       - name: Print run summary
         if: always()
         run: |
-          echo "## E2E Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## E2E Distributed Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Shards | 3 |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f results/test_results.json ]; then
             TOTAL=$(node -e "const r=require('./results/test_results.json'); console.log(r.length);")
@@ -115,7 +258,6 @@ jobs:
             echo "| Total Users | $TOTAL |" >> $GITHUB_STEP_SUMMARY
             echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
             echo "| Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
-            echo "| Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "test_results.json not found — tests may not have run." >> $GITHUB_STEP_SUMMARY
+            echo "test_results.json not found — check shard logs for errors." >> $GITHUB_STEP_SUMMARY
           fi

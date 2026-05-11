@@ -44,16 +44,23 @@ let mergeSuccess = runStep(
   'npx playwright merge-reports --reporter html ./blob-report'
 );
 
+// Merge per-worker partial results into results/test_results.json
+// before metrics-report.js consumes it. This step is shard-ready:
+// future runners can drop their partial files into results/partials/
+// and this step will aggregate them all automatically.
+let mergeMetricsSuccess = runStep('Merging partial metrics results', 'node merge-metrics.js');
+
 let reportSuccess = runStep('Generating metrics HTML report', 'node metrics-report.js');
 let pdfSuccess = runStep('Generating metrics PDF report', 'node generate-pdf.js');
 let zipSuccess = runStep('Zipping Playwright HTML report', 'node zip-report.js');
 let mailSuccess = runStep('Sending report via email', 'node send-report.js');
 
 console.log('\nSummary:');
-console.log(`E2E Tests:        ${testSuccess ? 'SUCCESS' : 'FAILED'}`);
-console.log(`Merge Reports:    ${mergeSuccess ? 'SUCCESS' : 'FAILED'}`);
-console.log(`Report Generation:${reportSuccess ? 'SUCCESS' : 'FAILED'}`);
-console.log(`PDF Generation:   ${pdfSuccess ? 'SUCCESS' : 'FAILED'}`);
-console.log(`Zipping Report:   ${zipSuccess ? 'SUCCESS' : 'FAILED'}`);
-console.log(`Email Sending:    ${mailSuccess ? 'SUCCESS' : 'FAILED'}`);
+console.log(`E2E Tests:           ${testSuccess ? 'SUCCESS' : 'FAILED'}`);
+console.log(`Merge Reports:       ${mergeSuccess ? 'SUCCESS' : 'FAILED'}`);
+console.log(`Merge Metrics:       ${mergeMetricsSuccess ? 'SUCCESS' : 'FAILED'}`);
+console.log(`Report Generation:   ${reportSuccess ? 'SUCCESS' : 'FAILED'}`);
+console.log(`PDF Generation:      ${pdfSuccess ? 'SUCCESS' : 'FAILED'}`);
+console.log(`Zipping Report:      ${zipSuccess ? 'SUCCESS' : 'FAILED'}`);
+console.log(`Email Sending:       ${mailSuccess ? 'SUCCESS' : 'FAILED'}`);
 console.log('All steps attempted. Check above for any errors.');

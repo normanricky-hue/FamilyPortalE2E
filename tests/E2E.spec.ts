@@ -13,90 +13,33 @@ import { getUsers } from "../utils/userLoader";
 
 const users = getUsers();
 
-const resultsFile = path.join(__dirname, "../results/test_results.json");
-const lockFile = path.join(__dirname, "../results/test_results.lock");
-
-// Results file is initialized in utils/globalSetup.ts (runs once before all workers).
-// No beforeAll needed here — avoids the per-worker overwrite race condition.
+/** Directory where each worker writes its own isolated partial results file. */
+const partialsDir = path.join(__dirname, "../results/partials");
 
 /**
- * Sleep utility — avoids CPU-heavy busy-spin while waiting for the lock file.
+ * Appends one result record to this worker's own partial file.
+ * No locking required — each Playwright worker runs its tests sequentially,
+ * so only one test at a time ever writes to a given worker's partial file.
  */
-function sleep(ms: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
+function appendToWorkerPartial(result: any, workerIndex: number): void {
+  const partialFile = path.join(partialsDir, `results-worker-${workerIndex}.json`);
 
-/**
- * Safely writes a single result to the shared results file using an atomic
- * lock file. Handles stale locks left by crashed workers and avoids
- * busy-spin waiting.
- */
-function writeResultSafely(result: any) {
-  const maxRetries = 50;
-  const retryDelayMs = 100;
-  const staleLockAgeMs = 10_000; // treat lock as stale after 10 seconds
-
-  for (let i = 0; i < maxRetries; i++) {
+  let existing: any[] = [];
+  if (fs.existsSync(partialFile)) {
     try {
-      // Atomic lock acquisition — fails immediately if lock file already exists
-      fs.writeFileSync(lockFile, process.pid.toString(), { flag: 'wx' });
-
-      try {
-        // Read current accumulated results
-        let results: any[] = [];
-        try {
-          const content = fs.readFileSync(resultsFile, 'utf-8');
-          results = JSON.parse(content);
-        } catch {
-          // File missing or corrupt — start fresh for this write
-          results = [];
-        }
-
-        results.push(result);
-        fs.writeFileSync(resultsFile, JSON.stringify(results, null, 2), 'utf-8');
-        return; // success
-      } finally {
-        // Always release the lock, even if the write above threw
-        try { fs.unlinkSync(lockFile); } catch { /* already gone */ }
-      }
-    } catch (err: any) {
-      if (err.code !== 'EEXIST') {
-        // Unexpected error — do not swallow
-        throw err;
-      }
-
-      // Lock file exists — check whether it is stale (left by a crashed worker)
-      try {
-        const lockStat = fs.statSync(lockFile);
-        const lockAgeMs = Date.now() - lockStat.mtimeMs;
-        if (lockAgeMs > staleLockAgeMs) {
-          console.warn(
-            `[writeResultSafely] Stale lock detected (age: ${Math.round(lockAgeMs / 1000)}s). Removing and retrying.`
-          );
-          try { fs.unlinkSync(lockFile); } catch { /* race: another worker already cleared it */ }
-          // Immediately retry without sleeping
-          continue;
-        }
-      } catch {
-        // statSync failed — lock already released by the other worker; retry
-        continue;
-      }
-
-      // Lock is fresh — sleep before retrying (no CPU spin)
-      sleep(retryDelayMs + Math.floor(Math.random() * 50));
+      existing = JSON.parse(fs.readFileSync(partialFile, 'utf-8'));
+    } catch {
+      existing = [];
     }
   }
 
-  console.error(
-    `[writeResultSafely] Failed to write result for ${
-      result?.username ?? 'unknown'
-    } after ${maxRetries} attempts. Result may be missing from report.`
-  );
+  existing.push(result);
+  fs.writeFileSync(partialFile, JSON.stringify(existing, null, 2), 'utf-8');
 }
 
 test.describe.parallel("Family portal E2E UI Automation", () => {
   for (const user of users) {
-    test(`E2E for ${user.username}`, async ({ page, context }) => {
+    test(`E2E for ${user.username}`, async ({ page, context }, testInfo) => {
       const start = Date.now();
       let status = "Pass";
       let errorMsg = "";
@@ -234,12 +177,10 @@ test.describe.parallel("Family portal E2E UI Automation", () => {
       } finally {
         const duration = Date.now() - start;
 
-        writeResultSafely({
-          username: user.username,
-          status,
-          duration,
-          errorMsg,
-        });
+        appendToWorkerPartial(
+          { username: user.username, status, duration, errorMsg },
+          testInfo.workerIndex
+        );
       }
     });
   }

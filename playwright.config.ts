@@ -13,11 +13,11 @@ export default defineConfig({
   timeout: 130000,
 
   expect: {
-    // Assertion timeout — how long expect(...).toBeVisible() etc. will poll.
-    // 50 s caused assertion hangs to inflate p95/p99 significantly under
-    // distributed concurrency. 20 s is sufficient for healthcare portal
-    // page transitions while still tolerating slow network renders.
-    timeout: 20000,
+    // Assertion timeout — raised from 20 s back to 25 s after observing ~50% retry
+    // rate under 6-shard / 30-user distributed runs. The portal's backend rendering
+    // under high concurrency occasionally needs those extra 5 s to resolve; tighter
+    // values produced false assertion failures that burned a full retry attempt.
+    timeout: 25000,
   },
 
   globalSetup: './utils/globalSetup.ts',
@@ -48,19 +48,18 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     permissions: ["geolocation"],
 
-    // Action timeout — per-action limit for clicks, fills, selects, etc.
-    // 150 s was effectively unlimited: a single stalled .click() could starve
-    // a worker for the entire global test timeout. 40 s matches the longest
-    // legitimate portal interaction (e.g. waiting for a spinner to clear after
-    // a button click) while allowing the global timeout to act as the outer
-    // safety net if multiple actions are slow.
-    actionTimeout: 40000,
+    // Action timeout — raised from 40 s to 60 s after distributed retry analysis.
+    // Under 6-shard parallel execution against a legacy healthcare portal, click and
+    // fill interactions occasionally stall for 40–55 s due to JS-heavy page state.
+    // 60 s prevents premature action failures while remaining well under the 130 s
+    // global test timeout, so a genuinely hung worker is still recovered promptly.
+    actionTimeout: 60000,
 
-    // Navigation timeout — limit for page.goto() and navigation events.
-    // 25 s is appropriate for the healthcare portal under distributed load
-    // and is kept unchanged. If DNS/TLS is involved, this gives sufficient
-    // margin while preventing indefinite hangs on unreachable pages.
-    navigationTimeout: 25000,
+    // Navigation timeout — raised from 25 s to 30 s to absorb slower initial page
+    // loads under high distributed concurrency (DNS + TLS + SSO redirect chain).
+    // 30 s keeps navigations bounded without causing false timeout failures that
+    // previously inflated the retry rate.
+    navigationTimeout: 30000,
   },
 
   projects: [

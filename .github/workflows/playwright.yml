@@ -7,6 +7,10 @@ on:
         description: 'Number of shards (runners) to use (1-10)'
         required: false
         default: '3'
+      workers:
+        description: 'Playwright workers per shard (for report metadata only)'
+        required: false
+        default: '5'
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
@@ -156,6 +160,9 @@ jobs:
       GITHUB_RUN_ID: ${{ github.run_id }}
       GITHUB_SERVER_URL: ${{ github.server_url }}
       GITHUB_REPOSITORY: ${{ github.repository }}
+      GITHUB_SHA: ${{ github.sha }}
+      SHARD_COUNT: ${{ github.event.inputs.shard_count }}
+      WORKERS: ${{ github.event.inputs.workers || '5' }}
 
     steps:
       - name: Checkout repository

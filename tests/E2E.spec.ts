@@ -186,7 +186,13 @@ test.describe.parallel("Family portal E2E UI Automation", () => {
         const duration = Date.now() - start;
 
         appendToWorkerPartial(
-          { username: user.username, status, duration, errorMsg },
+          {
+            username: user.username,
+            status,
+            duration,
+            errorMsg,
+            retryCount: testInfo.retry,   // 0 = first attempt, 1 = retried
+          },
           testInfo.workerIndex
         );
       }

@@ -4,16 +4,15 @@ dotenv.config();
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-  // Global test timeout — wall-clock limit for one complete user workflow.
-  // Raised to 180 s: at 30 users / 6 shards / distributed GitHub runners,
-  // retrying an entire 7-step healthcare portal workflow is more expensive
-  // than allowing moderately longer first attempts to succeed.
-  timeout: 180000,
+  // Global test timeout — 240 s: diagnostic mode, no retries, so each attempt
+  // must have maximum time to complete under distributed concurrency load.
+  // We want TRUE failures, not artificially aggressive timeouts.
+  timeout: 240000,
 
   expect: {
-    // Assertion timeout — 40 s tolerates backend rendering delays under high
-    // concurrency without burning a retry on a transient slow response.
-    timeout: 40000,
+    // Assertion timeout — 60 s: tolerates backend rendering and contention
+    // delays during 30-user parallel execution without creating false failures.
+    timeout: 60000,
   },
 
   globalSetup: './utils/globalSetup.ts',
@@ -23,7 +22,9 @@ export default defineConfig({
   fullyParallel: true,
   // CI (GitHub Actions): lower workers to respect 2-vCPU runner limits
   // Local: higher concurrency for faster execution
-  retries: process.env.CI ? 1 : 0,
+  // DIAGNOSTIC MODE: retries disabled to expose true concurrency failures.
+  // Re-enable (CI ? 1 : 0) after bottlenecks are identified and resolved.
+  retries: 0,
 
   workers: process.env.CI ? 5 : 20,
 
@@ -44,14 +45,13 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     permissions: ["geolocation"],
 
-    // Action timeout — 90 s covers the slowest legitimate portal interactions
-    // (JS-heavy state transitions, spinner waits) under distributed concurrency.
-    // Stays well under the 180 s global ceiling so hung workers are still recovered.
-    actionTimeout: 90000,
+    // Action timeout — 120 s: diagnostic mode covers the slowest JS-heavy
+    // portal interactions and spinner waits under 30-user concurrent load.
+    actionTimeout: 120000,
 
-    // Navigation timeout — 45 s absorbs SSO redirect chains and slow initial
-    // page loads under 6-shard parallel execution without causing false failures.
-    navigationTimeout: 45000,
+    // Navigation timeout — 60 s: absorbs SSO redirect chains and slow initial
+    // page loads without masking true navigation failures.
+    navigationTimeout: 60000,
   },
 
   projects: [

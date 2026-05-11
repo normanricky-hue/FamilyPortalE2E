@@ -17,9 +17,10 @@ const users = getUsers();
 const partialsDir = path.join(__dirname, "../results/partials");
 
 /**
- * Appends one result record to this worker's own partial file.
- * No locking required — each Playwright worker runs its tests sequentially,
- * so only one test at a time ever writes to a given worker's partial file.
+ * Upserts one result record into this worker's own partial file, keyed by username.
+ * If an entry for the same username already exists (e.g. from a Playwright retry),
+ * it is replaced so the final/latest attempt always wins — no duplicate rows.
+ * No locking required — each Playwright worker runs its tests sequentially.
  */
 function appendToWorkerPartial(result: any, workerIndex: number): void {
   const partialFile = path.join(partialsDir, `results-worker-${workerIndex}.json`);
@@ -33,7 +34,14 @@ function appendToWorkerPartial(result: any, workerIndex: number): void {
     }
   }
 
-  existing.push(result);
+  // Upsert: replace any previous entry for this username (handles retries).
+  const idx = existing.findIndex((r: any) => r.username === result.username);
+  if (idx !== -1) {
+    existing[idx] = result; // overwrite with latest attempt result
+  } else {
+    existing.push(result);
+  }
+
   fs.writeFileSync(partialFile, JSON.stringify(existing, null, 2), 'utf-8');
 }
 

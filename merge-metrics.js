@@ -32,7 +32,10 @@ function mergeMetrics() {
     return;
   }
 
-  const merged = [];
+  // Use a Map keyed by username for deduplication across shards/retries.
+  // Later entries overwrite earlier ones — final/latest result always wins.
+  const mergedMap = new Map();
+  let totalRecordsRead = 0;
 
   for (const file of partialFiles) {
     try {
@@ -44,16 +47,31 @@ function mergeMetrics() {
         continue;
       }
 
-      merged.push(...records);
+      totalRecordsRead += records.length;
+      for (const record of records) {
+        const key = record.username || record.userId || record.executionId;
+        if (!key) {
+          console.warn(`[merge-metrics] Record missing unique key (username/userId/executionId), skipping:`, record);
+          continue;
+        }
+        // Overwrite any existing entry — last/final result wins (handles retries + shard collisions)
+        mergedMap.set(key, record);
+      }
     } catch (err) {
       console.warn(`[merge-metrics] Failed to parse ${file}: ${err.message}. Skipping.`);
     }
   }
 
+  const merged = Array.from(mergedMap.values());
+
+  if (totalRecordsRead !== merged.length) {
+    console.log(`[merge-metrics] Deduplication: ${totalRecordsRead} raw record(s) → ${merged.length} unique user(s) (removed ${totalRecordsRead - merged.length} duplicate(s))`);
+  }
+
   // Write merged results — preserves exact JSON structure consumed by metrics-report.js
   fs.writeFileSync(outputFile, JSON.stringify(merged, null, 2), 'utf-8');
 
-  console.log(`[merge-metrics] Merged ${partialFiles.length} partial file(s) → ${merged.length} total record(s)`);
+  console.log(`[merge-metrics] Merged ${partialFiles.length} partial file(s) → ${merged.length} unique user record(s)`);
   console.log(`[merge-metrics] Output written to: ${outputFile}`);
 }
 

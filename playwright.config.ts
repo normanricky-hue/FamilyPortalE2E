@@ -4,10 +4,20 @@ dotenv.config();
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-  timeout: 200000, // 2 minutes per test
+  // Global test timeout — wall-clock limit for one complete user workflow
+  // (login → 7 portal steps → pay stub).
+  // 200 s was too generous: a genuinely stuck worker would hold a shard slot
+  // for ~3 min before Playwright could recover it.
+  // 130 s gives the full multi-step workflow enough headroom while ensuring
+  // stuck tests fail fast and free their worker for the next user.
+  timeout: 130000,
 
   expect: {
-    timeout: 50000,
+    // Assertion timeout — how long expect(...).toBeVisible() etc. will poll.
+    // 50 s caused assertion hangs to inflate p95/p99 significantly under
+    // distributed concurrency. 20 s is sufficient for healthcare portal
+    // page transitions while still tolerating slow network renders.
+    timeout: 20000,
   },
 
   globalSetup: './utils/globalSetup.ts',
@@ -38,7 +48,18 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     permissions: ["geolocation"],
 
-    actionTimeout: 150000,
+    // Action timeout — per-action limit for clicks, fills, selects, etc.
+    // 150 s was effectively unlimited: a single stalled .click() could starve
+    // a worker for the entire global test timeout. 40 s matches the longest
+    // legitimate portal interaction (e.g. waiting for a spinner to clear after
+    // a button click) while allowing the global timeout to act as the outer
+    // safety net if multiple actions are slow.
+    actionTimeout: 40000,
+
+    // Navigation timeout — limit for page.goto() and navigation events.
+    // 25 s is appropriate for the healthcare portal under distributed load
+    // and is kept unchanged. If DNS/TLS is involved, this gives sufficient
+    // margin while preventing indefinite hangs on unreachable pages.
     navigationTimeout: 25000,
   },
 

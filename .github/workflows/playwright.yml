@@ -101,6 +101,11 @@ jobs:
           echo "Loaded $USER_COUNT user(s) into data/users.json"
 
       - name: Run Playwright tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+        env:
+          # Expose shard identity to the test process so test titles and
+          # diagnostic console logs embed the correct shard number.
+          SHARD_INDEX: ${{ matrix.shardIndex }}
+          SHARD_TOTAL: ${{ matrix.shardTotal }}
         run: |
           npx playwright test tests/E2E.spec.ts \
             --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
@@ -131,6 +136,18 @@ jobs:
           path: blob-report/
           if-no-files-found: ignore
           retention-days: 3
+
+      - name: Upload diagnostic artifacts - traces, videos, screenshots (shard ${{ matrix.shardIndex }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # Artifacts are stored under test-results/ and named by test title,
+          # which now includes the username and shard for direct correlation.
+          # e.g. test-results/[E2E][user@email.com][Shard-2]-chromium/
+          name: diagnostic-artifacts-shard-${{ matrix.shardIndex }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload metrics partials (shard ${{ matrix.shardIndex }})
         if: always()

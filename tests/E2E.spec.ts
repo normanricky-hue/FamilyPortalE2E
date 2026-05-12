@@ -45,12 +45,33 @@ function appendToWorkerPartial(result: any, workerIndex: number): void {
   fs.writeFileSync(partialFile, JSON.stringify(existing, null, 2), 'utf-8');
 }
 
+// Shard identity injected by GitHub Actions via SHARD_INDEX env var.
+// Falls back to 'local' when running outside CI.
+const SHARD_ID = process.env.SHARD_INDEX || 'local';
+
 test.describe.parallel("Family portal E2E UI Automation", () => {
   for (const user of users) {
-    test(`E2E for ${user.username}`, async ({ page, context }, testInfo) => {
+    // Test title embeds user login + shard for easy artifact correlation.
+    // Playwright uses the title as the artifact directory name, so screenshots,
+    // videos, and traces produced by this test will be stored under a path that
+    // includes the username and shard, e.g.:
+    //   test-results/[E2E][user@email.com][Shard-2]-chromium/
+    test(`[E2E][${user.username}][Shard-${SHARD_ID}]`, async ({ page, context }, testInfo) => {
+      const workerTag = `[Shard-${SHARD_ID}][Worker-${testInfo.workerIndex}]`;
+      const userTag   = `[${user.username}]`;
+      const diagTag   = `[DIAG]${userTag}${workerTag}`;
+
+      // ── Execution identity annotations (visible in Playwright HTML report) ──
+      testInfo.annotations.push({ type: 'User',        value: user.username });
+      testInfo.annotations.push({ type: 'ShardIndex',  value: String(SHARD_ID) });
+      testInfo.annotations.push({ type: 'WorkerIndex', value: String(testInfo.workerIndex) });
+      testInfo.annotations.push({ type: 'RetryIndex',  value: String(testInfo.retry) });
+
       const start = Date.now();
       let status = "Pass";
       let errorMsg = "";
+
+      console.log(`${diagTag} ── TEST START ─── ${new Date(start).toISOString()}`);
 
       try {
         const login = new LoginPage(page);
@@ -61,12 +82,14 @@ test.describe.parallel("Family portal E2E UI Automation", () => {
         const review = new ReviewPayPeriodPage(page);
 
         await login.goto();
+        console.log(`${diagTag} [1/7] goto login page`);
         await login.fillCredentials(user.username, user.password);
 
         const clicked = await login.clickLogin();
         if (!clicked) {
-          console.warn(`[${user.username}] Login button not found`);
+          console.warn(`${diagTag} Login button not found`);
         }
+        console.log(`${diagTag} [1/7] login submitted`);
 
         // ✅ Stable Home Navigation
         const goHome = async () => {
@@ -83,37 +106,48 @@ test.describe.parallel("Family portal E2E UI Automation", () => {
         };
 
         // 🔹 Renewable
+        console.log(`${diagTag} [2/7] opening Renewable`);
         await renewable.open();
         await renewable.waitForLoad();
         await renewable.processAndMarkCompleted();
+        console.log(`${diagTag} [2/7] Renewable done`);
 
         await goHome();
 
         // 🔹 Authorizations
+        console.log(`${diagTag} [3/7] opening Authorizations`);
         await auth.open();
         await auth.verifyLoaded();
+        console.log(`${diagTag} [3/7] Authorizations done`);
 
         await goHome();
 
         // 🔹 Denied Timesheet
+        console.log(`${diagTag} [4/7] opening Denied Timesheet`);
         await denied.open();
         await denied.verifyLoaded();
+        console.log(`${diagTag} [4/7] Denied Timesheet done`);
 
         await goHome();
 
         // 🔹 Vendor Timesheet
+        console.log(`${diagTag} [5/7] opening Vendor Timesheet`);
         await vendor.open();
         await vendor.verifyLoaded();
+        console.log(`${diagTag} [5/7] Vendor Timesheet done`);
 
         await goHome();
 
         // 🔹 Review Pay Period
+        console.log(`${diagTag} [6/7] opening Review Pay Period`);
         await review.open();
         await review.verifyLoaded();
+        console.log(`${diagTag} [6/7] Review Pay Period done`);
 
         await goHome();
 
         // 🔥 Employer Pay Stub (FINAL STABLE VERSION)
+        console.log(`${diagTag} [7/7] opening Employer Pay Stub`);
 
         const payStubBtn = page.locator("#div_EmployerPayStub");
         await expect(payStubBtn).toBeVisible();
@@ -124,7 +158,7 @@ test.describe.parallel("Family portal E2E UI Automation", () => {
         // ✅ Handle alert BEFORE click
         page.once("dialog", async (dialog) => {
           const message = dialog.message();
-          console.warn(`[${user.username}] Alert: ${message}`);
+          console.warn(`${diagTag} Alert: ${message}`);
 
           if (message.toLowerCase().includes("no pay stubs")) {
             alertHandled = true;
@@ -144,7 +178,7 @@ test.describe.parallel("Family portal E2E UI Automation", () => {
 
         // ✅ Case 1: Alert → skip
         if (alertHandled) {
-          console.warn(`[${user.username}] ⚠️ No Pay Stub available, skipping`);
+          console.warn(`${diagTag} [7/7] No Pay Stub available, skipping`);
           return;
         }
 
@@ -152,13 +186,14 @@ test.describe.parallel("Family portal E2E UI Automation", () => {
         payStubPageRaw = await pagePromise;
 
         if (payStubPageRaw) {
-          console.log(`[${user.username}] Opened in new tab`);
+          console.log(`${diagTag} [7/7] Pay Stub opened in new tab`);
 
           const payStubPage = new EmployerPayStubPage(payStubPageRaw);
           await payStubPage.waitForLoad();
           await payStubPage.verifyLoaded();
           await payStubPage.close();
 
+          console.log(`${diagTag} [7/7] Pay Stub (new tab) done`);
           return;
         }
 
@@ -169,21 +204,25 @@ test.describe.parallel("Family portal E2E UI Automation", () => {
 
         try {
           await expect(reportLocator).toBeVisible({ timeout: 5000 });
-          console.log(`[${user.username}] Opened in same tab`);
+          console.log(`${diagTag} [7/7] Pay Stub opened in same tab`);
           return;
         } catch {
           // no navigation happened
         }
 
         // ✅ Case 4: Feature not available → skip
-        console.warn(`[${user.username}] ⚠️ Pay Stub not available, skipping`);
+        console.warn(`${diagTag} [7/7] Pay Stub not available, skipping`);
         return;
       } catch (e) {
         status = "Fail";
         errorMsg = e instanceof Error ? e.message : String(e);
+        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+        console.error(`${diagTag} ── TEST FAILED after ${elapsed}s ── ${errorMsg.split('\n')[0]}`);
+        testInfo.annotations.push({ type: 'FailureMessage', value: errorMsg.split('\n')[0] });
         throw e;
       } finally {
         const duration = Date.now() - start;
+        console.log(`${diagTag} ── TEST END [${status}] ${(duration / 1000).toFixed(1)}s ───`);
 
         appendToWorkerPartial(
           {

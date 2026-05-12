@@ -35,9 +35,17 @@ export default defineConfig({
     : [['html', { open: 'never' }], ['blob'], ['dot'], ['list']],
 
   use: {
-    trace: "on-first-retry",
+    // DIAGNOSTIC MODE: full trace on every test (retries are disabled — no on-first-retry).
+    // Provides complete step-by-step diagnostics for every concurrent worker.
+    trace: "on",
+
+    // Keep failure screenshots for quick visual triage without full trace replay.
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+
+    // DIAGNOSTIC MODE: record full video for every test so the complete E2E flow
+    // (login → navigation → setup → slowdown → failure sequence) is always captured.
+    // Revert to "retain-on-failure" after bottlenecks are resolved.
+    video: "on",
 
     headless: true, // ✅ important for parallel runs
 
